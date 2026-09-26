@@ -1,0 +1,9 @@
+# Rohdaten und Arbeitsdateien (groß, reproduzierbar)
+data/raw/
+data/demo/
+data/*.duckdb
+data/*.duckdb.wal
+*.part
+__pycache__/
+.venv/
+.DS_Store

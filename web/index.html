@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ladebilanz · OBELISöffentlich</title>
+  <meta name="description" content="Auswertung der Ladevorgänge an geförderten öffentlichen Ladepunkten in Deutschland (OBELISöffentlich, NOW GmbH).">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231B2430'/%3E%3Cpath d='M5 21c4-6 7-9 11-9s6 5 11 1' stroke='%23F6F4EF' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="demo-banner" class="demo-banner" hidden>
+    <span class="demo-banner__tag">Demodaten</span>
+    <span>Synthetisch erzeugt im Originalschema. Keine realen Werte. Echte Auswertung mit <code>python pipeline/build.py</code> erzeugen.</span>
+  </div>
+
+  <header class="masthead">
+    <div class="wrap masthead__inner">
+      <div class="masthead__brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">Ladebilanz</span>
+        <span class="brand-sub">OBELISöffentlich</span>
+      </div>
+      <nav class="masthead__nav" aria-label="Abschnitte">
+        <a href="#energie">Energie</a>
+        <a href="#dauer">Dauer</a>
+        <a href="#leistung">Leistung</a>
+        <a href="#ladepunkte">Ladepunkte</a>
+        <a href="#rhythmus">Rhythmus</a>
+        <a href="#regionen">Regionen</a>
+        <a href="#stammdaten">Stammdaten</a>
+        <a href="#methodik">Methodik</a>
+      </nav>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Farbschema wechseln">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="5.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 6.8a5.2 5.2 0 0 1 0 10.4z" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap hero__grid">
+        <div class="hero__text">
+          <p class="eyebrow" id="hero-eyebrow">Geförderte öffentliche Ladepunkte in Deutschland</p>
+          <h1 class="hero__title">Wie sich öffentliches Laden <em>verändert</em></h1>
+          <p class="hero__lede" id="hero-lede"></p>
+        </div>
+        <figure class="hero__art" aria-label="Verteilung der Energiemenge je Ladevorgang, ein Kamm je Jahr">
+          <svg id="hero-ridge" role="img"></svg>
+          <figcaption id="hero-ridge-cap">Verteilung der Energie je Ladevorgang, ein Kamm je Jahr</figcaption>
+        </figure>
+      </div>
+      <div class="wrap">
+        <div class="kpis" id="kpis"></div>
+      </div>
+    </section>
+
+    <div class="controls" id="controls">
+      <div class="wrap controls__inner">
+        <div class="control">
+          <span class="control__label">Zeitraster</span>
+          <div class="seg" data-control="grain">
+            <button data-value="month">Monat</button>
+            <button data-value="quarter" aria-pressed="true">Quartal</button>
+            <button data-value="year">Jahr</button>
+          </div>
+        </div>
+        <div class="control">
+          <span class="control__label">Lagemaß</span>
+          <div class="seg" data-control="stat">
+            <button data-value="med" aria-pressed="true">Median</button>
+            <button data-value="mean">Mittelwert</button>
+          </div>
+        </div>
+        <div class="control">
+          <label class="control__label" for="scope">Ausschnitt</label>
+          <select id="scope" class="select"></select>
+        </div>
+        <div class="control control--classes">
+          <span class="control__label">Leistungsklassen</span>
+          <div class="chips" id="class-chips"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 01 Energie -->
+    <section class="section" id="energie">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">01</span>
+          <h2>Energie je Ladevorgang</h2>
+          <p>Wie viele Kilowattstunden fließen bei einem Ladevorgang, getrennt nach der Nennleistung des Ladepunkts? Schnelllader geben mehr pro Stopp ab, doch auch an AC-Punkten wachsen die Mengen mit den Akkus.</p>
+          <p class="note" id="note-energie"></p>
+        </header>
+        <div class="card" data-chart="energy"></div>
+      </div>
+    </section>
+
+    <!-- 02 Dauer -->
+    <section class="section" id="dauer">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">02</span>
+          <h2>Dauer der Ladevorgänge</h2>
+          <p>Zeit zwischen Start und Ende eines Vorgangs, also inklusive Standzeit nach vollem Akku. An AC-Punkten dominiert das Parken, an DC-Punkten das eigentliche Laden.</p>
+          <p class="note">Tipp: Eine einzelne Leistungsklasse wählen, dann erscheint das Band zwischen 25. und 75. Perzentil.</p>
+        </header>
+        <div class="card" data-chart="duration"></div>
+      </div>
+    </section>
+
+    <!-- 03 Leistung -->
+    <section class="section" id="leistung">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">03</span>
+          <h2>Effektive Ladeleistung</h2>
+          <p>Energie geteilt durch Dauer ergibt die mittlere Leistung eines Vorgangs. Sie liegt meist weit unter der Nennleistung: Fahrzeuge regeln ab, Akkus sind voll, Autos bleiben stehen.</p>
+          <p>Rechts das Verhältnis zur Nennleistung des Ladepunkts (Median je Zeitraum).</p>
+        </header>
+        <div class="split">
+          <div class="card" data-chart="power"></div>
+          <div class="card" data-chart="util"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 Ladepunkte -->
+    <section class="section" id="ladepunkte">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">04</span>
+          <h2>Wie viele Ladepunkte melden</h2>
+          <p>Ladepunkte mit mindestens einem plausiblen Ladevorgang im Zeitraum. Die Betreiber berichten halbjährlich, daher sind Sprünge an Halbjahresgrenzen normal.</p>
+          <p class="note" id="note-lps"></p>
+        </header>
+        <div class="stack">
+          <div class="card" data-chart="lps"></div>
+          <div class="split">
+            <div class="card" data-chart="newlps"></div>
+            <div class="card" data-chart="quote"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 Auslastung -->
+    <section class="section" id="auslastung">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">05</span>
+          <h2>Auslastung je Ladepunkt</h2>
+          <p>Ladevorgänge und Energie je meldendem Ladepunkt und Kalendertag. Darunter die Streuung zwischen den Ladepunkten eines Jahres: Der typische Punkt liegt weit unter den Spitzenreitern.</p>
+        </header>
+        <div class="stack">
+          <div class="split">
+            <div class="card" data-chart="sessPerLp"></div>
+            <div class="card" data-chart="kwhPerLp"></div>
+          </div>
+          <div class="split">
+            <div class="card" data-chart="loadSpread"></div>
+            <div class="card" data-chart="lorenz"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 Mix -->
+    <section class="section" id="mix">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">06</span>
+          <h2>Wohin die Energie fließt</h2>
+          <p>Anteil der geladenen Energie nach Leistungsklasse. Der Wandel vom AC-Parken zum DC-Stopp zeigt sich hier am deutlichsten.</p>
+        </header>
+        <div class="card" data-chart="mix"></div>
+      </div>
+    </section>
+
+    <!-- 07 Rhythmus -->
+    <section class="section" id="rhythmus">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">07</span>
+          <h2>Wochenrhythmus</h2>
+          <p>Wann Ladevorgänge beginnen, nach Wochentag und Stunde, über den gesamten Zeitraum. Die Zeitzone der Rohdaten ist nicht dokumentiert, angenommen wird Ortszeit.</p>
+        </header>
+        <div class="card" data-chart="week"></div>
+      </div>
+    </section>
+
+    <!-- 08 Verteilungen -->
+    <section class="section" id="verteilung">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">08</span>
+          <h2>Verteilungen im Wandel</h2>
+          <p>Ein Mittelwert verrät nicht, ob sich die ganze Verteilung verschiebt oder nur die Ränder. Ein Kamm je Jahr, jeweils auf die eigene Spitze normiert.</p>
+        </header>
+        <div class="card" data-chart="ridge"></div>
+      </div>
+    </section>
+
+    <!-- 09 Regionen -->
+    <section class="section" id="regionen">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">09</span>
+          <h2>Regionen und Standorte</h2>
+          <p>Die Ladevorgänge tragen das Bundesland und die Lage der tatsächlichen Station. Genauere Orte sind aus Geheimhaltungsgründen nicht enthalten.</p>
+        </header>
+        <div class="stack">
+          <div class="split split--wide-left">
+            <div class="card" data-chart="tiles"></div>
+            <div class="card" data-chart="blRank"></div>
+          </div>
+          <div class="card" data-chart="lage"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 Stammdaten -->
+    <section class="section" id="stammdaten">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">10</span>
+          <h2>Stammdaten der Ladestationen</h2>
+          <p>Die Stammdaten beschreiben die geförderte Infrastruktur. Sie lassen sich nicht mit den Ladevorgängen verknüpfen, weil deren IDs zufällig neu vergeben wurden. Beide Sichten stehen daher nebeneinander, nicht übereinander.</p>
+          <p class="note" id="note-master"></p>
+        </header>
+        <div class="stack" id="master-stack">
+          <div class="split split--wide-left">
+            <div class="card" data-chart="map"></div>
+            <div class="card" data-chart="commissioning"></div>
+          </div>
+          <div class="split">
+            <div class="card" data-chart="masterBl"></div>
+            <div class="card" data-chart="program"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11 Methodik -->
+    <section class="section section--method" id="methodik">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">11</span>
+          <h2>Datenqualität und Methodik</h2>
+          <p>Die Rohdaten enthalten Ausreißer bis hin zu negativen Energiemengen und Zeitstempeln aus dem Jahr 1809. Jede Zeile durchläuft die Regeln rechts in dieser Reihenfolge, die erste zutreffende zählt.</p>
+        </header>
+        <div class="stack">
+          <div class="card" data-chart="quality"></div>
+          <div class="method" id="method"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer__inner">
+      <p id="footer-source"></p>
+      <p class="footer__meta" id="footer-meta"></p>
+    </div>
+  </footer>
+
+  <div class="tooltip" id="tooltip" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
