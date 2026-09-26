@@ -93,3 +93,9 @@ Elektrofahrzeuge" / NOW GmbH (Nationale Leitstelle Ladeinfrastruktur), Lizenz
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
 [Mobilithek](https://mobilithek.info/offers/714073450865197056). Bei Weitergabe von Auswertungen
 diese Quellenangabe mit Jahr des Datenbezugs nennen.
+
+## Veröffentlichung
+
+`.github/workflows/pages.yml` veröffentlicht `web/` bei jedem Push auf `main` (nur wenn sich
+`web/` ändert) auf GitHub Pages. In den Repo-Einstellungen unter *Pages → Source* muss
+"GitHub Actions" ausgewählt sein.
