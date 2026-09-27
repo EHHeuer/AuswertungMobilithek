@@ -561,7 +561,7 @@ export function ridgeline(container, groups, edges, opts = {}) {
   const W = container.clientWidth || 600;
   const rowH = opts.rowH || 34;
   const overlap = opts.overlap || 1.9;
-  const m = { t: rowH * overlap - rowH + 8, r: 16, b: opts.axis === false ? 4 : 26, l: opts.labels === false ? 4 : 48 };
+  const m = { t: rowH * overlap - rowH + 8, r: 16, b: opts.axis === false ? 4 : 26, l: opts.labels === false ? 4 : (opts.labelW || 48) };
   const H = m.t + rowH * groups.length + m.b;
   const iw = W - m.l - m.r;
   const lastEdge = edges[edges.length - 1] + (edges[1] - edges[0]);

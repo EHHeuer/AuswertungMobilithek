@@ -3,17 +3,18 @@
 Dashboard zu den Ladevorgängen an geförderten öffentlichen Ladepunkten in Deutschland
 (Datensatz *OBELISöffentlich* der NOW GmbH / Nationale Leitstelle Ladeinfrastruktur).
 
-**Wichtig:** Die mitgelieferte `web/data/obelis.json` enthält **synthetische Demodaten** im
-Originalschema. Die Originaldateien waren beim Erstellen aus der Build-Umgebung nicht abrufbar
-(CloudFront blockt Zugriffe aus manchen Regionen). Die Seite zeigt dann oben ein Band
-"Demodaten". Für echte Zahlen einmal lokal die Pipeline laufen lassen (siehe unten).
+Live: https://ehheuer.github.io/AuswertungMobilithek/
+
+Die mitgelieferte `web/data/obelis.json` ist aus den Originaldaten gebaut (Datenstand bis
+Dezember 2025, 39,2 Mio. Ladevorgänge, 18.527 Stationen, 19.581 Preismodelle). Mit
+`--demo` erzeugte Dateien zeigen oben ein Band "Demodaten".
 
 ## Schnellstart
 
 ```bash
 pip install -r pipeline/requirements.txt
 
-# 1. Echte Daten laden und aggregieren (lädt df_lv.csv, df_ls.csv, df_lp.csv nach data/raw/)
+# 1. Daten laden und aggregieren (lädt df_lv.csv, df_ls.csv, df_lp.csv, df_pm.csv nach data/raw/)
 python pipeline/build.py
 
 # 2. Dashboard ansehen
@@ -44,7 +45,8 @@ Demodaten neu erzeugen: `python pipeline/make_demo.py && python pipeline/build.p
 | 08 Verteilungen | Ridgeline je Jahr für Energie, Dauer, Leistung |
 | 09 Regionen | Kachelkarte und Rangfolge der Bundesländer, Profil nach Lage |
 | 10 Stammdaten | Stationskarte mit Zeitraffer, Inbetriebnahmen kumuliert, Bundesland, Förderprogramm |
-| 11 Methodik | Aussortierte Zeilen je Regel, Annahmen, Grenzen |
+| 11 Preise | Ad-hoc-Arbeitspreise Normal/Schnell, Zeit- und Vorgangsgebühren, Kohorten nach "kostenpflichtig seit" (df_pm.csv) |
+| 12 Methodik | Aussortierte Zeilen je Regel, Annahmen, Grenzen |
 
 Globale Filter: Zeitraster (Monat/Quartal/Jahr), Median/Mittelwert, Ausschnitt (Bundesland oder
 Lage), Leistungsklassen. Jede Karte hat eine Tabellenansicht, Hell- und Dunkelmodus.
@@ -54,13 +56,18 @@ Lage), Leistungsklassen. Jede Karte hat eine Tabellenansicht, Hell- und Dunkelmo
 - **Leistungsklassen** nach `maxladeleistunginkilowatt` des Ladepunkts: ≤ 11, 12–22, 23–50,
   51–150, > 150 kW.
 - **Plausibilisierung** (erste zutreffende Regel zählt, Grenzen in `pipeline/build.py`, `RULES`):
-  Beginn 2017 bis Ende Berichtszeitraum (`--end`, Standard 2025-01-01), Dauer 1 min bis 48 h,
+  Beginn 2017 bis Ende Berichtszeitraum (`--end`, Standard: automatisch aus den Daten), Dauer 1 min bis 48 h,
   Energie 0,1 bis 300 kWh, Nennleistung > 0 und ≤ 1 MW, mittlere Leistung ≤ 115 % der
   Nennleistung + 1 kW.
 - **Quantile** per t-digest (`approx_quantile`), typisch < 1 % Abweichung.
 - Zeiträume mit < 30 Vorgängen je Klasse werden nicht gezeichnet.
 
 ## Grenzen der Daten
+
+- Die Preismodelle sind eine Momentaufnahme je Station, keine Preishistorie. Offensichtliche
+  Einheitenfehler werden korrigiert ("Cent" unter 2 wird als Euro gelesen, "Euro" über 5 als Cent).
+- In `df_ls.csv` ist `anschlussleistungInKilowatt` der Netzanschluss der Station und wird nicht als
+  Ladeleistung verwendet. Förderprogramme liegen nur als ID vor (Namen stünden in `df_fp.csv`).
 
 - Die IDs in `df_lv.csv` sind zufällig neu vergeben (`_shuffled`). **Ladevorgänge lassen sich nicht
   mit den Stammdaten verknüpfen.** Die Stammdaten stehen deshalb als eigene Sicht daneben.

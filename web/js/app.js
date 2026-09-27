@@ -305,7 +305,8 @@ function renderStatic() {
   document.getElementById("note-energie").textContent =
     `Zeiträume mit weniger als ${MIN_N} Ladevorgängen je Klasse bleiben leer. Klassen nach Nennleistung des Ladepunkts, nicht nach Fahrzeug.`;
   const inc = m.incomplete?.length ? ` Grau hinterlegt: Monate mit auffällig wenigen Meldungen (${m.incomplete.map(fmtD).join(", ")}).` : "";
-  document.getElementById("note-lps").textContent = `Insgesamt ${fmt(m.lps_total, 0)} Ladepunkte an ${fmt(m.lss_total, 0)} Stationen.${inc}`;
+  document.getElementById("note-lps").textContent = `Insgesamt ${fmt(m.lps_total, 0)} Ladepunkte an ${fmt(m.lss_total, 0)} Stationen.${inc} ` +
+    "Ein Rückgang heißt nicht zwingend, dass Punkte stillgelegt wurden: Die Berichtspflicht endet nach der Mindestbetriebsdauer von sechs Jahren (Vermutung, aus den Daten nicht prüfbar).";
 
   const ls = D.master?.ls, lp = D.master?.lp;
   const parts = [];
@@ -723,16 +724,85 @@ function defineCards() {
   card("program", {
     available: () => !!(D.master?.ls?.program || D.master?.ls?.lage),
     title: () => (D.master.ls?.program ? "Stationen je Förderprogramm" : "Stationen nach Lage"),
-    sub: () => "Stammdaten",
+    sub: () => (D.master.ls?.program ? "Stammdaten · Namen der Programme sind nicht enthalten" : "Stammdaten"),
     render: (body) => {
       const src = D.master.ls.program || D.master.ls.lage;
-      const items = src.map(([k, v]) => ({ label: String(k).length > 34 ? String(k).slice(0, 33) + "…" : String(k), value: v }));
+      // Förderprogramme liegen nur als ID vor (Namen stehen in df_fp.csv)
+      const name = (k) => (/^\d+(\.0+)?$/.test(String(k)) ? `Programm-ID ${parseInt(k, 10)}` : String(k));
+      const items = src.map(([k, v]) => ({ label: name(k), value: v }));
       hBars(body, items, { format: (v) => fmt(v, 0), rowH: 24, color: cssVar("--c1") });
-      return { head: ["Kategorie", "Anzahl"], rows: src.map(([k, v]) => [k, fmt(v, 0)]) };
+      return { head: ["Kategorie", "Anzahl"], rows: items.map((i) => [i.label, fmt(i.value, 0)]) };
     },
   });
 
-  // 11 Qualität
+  // 11 Ad-hoc-Preise
+  const PT = { normal: { label: "Normalladen", c: 2 }, schnell: { label: "Schnellladen", c: 4 } };
+  const ptypes = () => Object.keys(D.prices?.types || {}).filter((t) => PT[t]);
+  const ct = (v, l) => (l ? `${fmt(v, 1)} ct/kWh` : fmt(v, 0));
+  card("priceKpis", {
+    available: () => !!D.prices,
+    title: () => "Preismodelle auf einen Blick",
+    sub: () => `${fmt(D.prices.rows, 0)} gemeldete Preismodelle`,
+    render: (body) => {
+      const rows = [];
+      const row = h("div", { class: "stat-row" });
+      for (const t of ptypes()) {
+        const x = D.prices.types[t];
+        const color = classColor(PT[t].c);
+        const stats = [
+          { label: `Median Arbeitspreis · ${PT[t].label}`, value: fmt(x.q?.[2], 0), unit: "ct/kWh", sub: `Mitte 50 %: ${fmt(x.q?.[1], 0)} bis ${fmt(x.q?.[3], 0)} ct` },
+          { label: `Mit Zeitgebühr · ${PT[t].label}`, value: fmt(x.time_fee_share * 100, 0), unit: "%", sub: "Minuten- oder Stundenpreis" },
+          { label: `Mit Gebühr je Vorgang · ${PT[t].label}`, value: fmt(x.session_fee_share * 100, 0), unit: "%", sub: `kostenlos: ${fmt(x.free_share * 100, 1)} %` },
+        ];
+        for (const st of stats) {
+          row.append(h("div", { class: "stat", style: { "--c": color } }, [
+            h("p", { class: "stat__label", text: st.label }),
+            h("p", { class: "stat__value" }, [st.value, h("span", { class: "stat__unit", text: st.unit })]),
+            h("p", { class: "stat__sub", text: st.sub }),
+          ]));
+          rows.push([st.label, `${st.value} ${st.unit}`]);
+        }
+      }
+      body.append(row);
+      return { head: ["Kennzahl", "Wert"], rows };
+    },
+  });
+  card("priceHist", {
+    available: () => !!D.prices,
+    title: () => "Verteilung der Arbeitspreise",
+    sub: () => "ct/kWh, ohne kostenlose Modelle · Strich = Median",
+    render: (body) => {
+      const edges = D.prices.edges;
+      const groups = ptypes().map((t) => ({ label: PT[t].label, bins: D.prices.types[t].hist, marker: D.prices.types[t].q?.[2], highlight: t === "schnell" }));
+      ridgeline(body, groups, edges, {
+        xMax: 110, unit: "ct", rowH: 70, overlap: 1.25, labelW: 96,
+        onHover: (g) => tipRows(g.label, [
+          { label: "Median", value: ct(g.marker, true) },
+          { label: "Preismodelle", value: fmt(g.bins.reduce((a, b) => a + b, 0), 0) },
+        ]),
+      });
+      return { head: ["Preis ab (ct/kWh)", ...groups.map((g) => g.label)], rows: edges.map((e, i) => [fmt(e, 0), ...groups.map((g) => fmt(g.bins[i], 0))]) };
+    },
+    foot: () => "Letzte Klasse sammelt alle Preise ab 120 ct/kWh.",
+  });
+  card("priceCohort", {
+    available: () => !!D.prices,
+    title: () => "Heutiger Preis nach Jahr der Umstellung",
+    sub: () => "kostenpflichtig seit … · P10 bis P90",
+    tools: () => [{ type: "seg", key: "priceType", default: "schnell", options: ptypes().map((t) => [t, PT[t].label]) }],
+    render: (body) => {
+      const t = tool("priceType", "schnell");
+      const src = D.prices.cohorts[t] || [];
+      if (!src.length) { body.append(h("div", { class: "empty", text: "Zu wenige Preismodelle." })); return null; }
+      const color = classColor(PT[t].c);
+      const items = src.map(([y, n, q]) => ({ label: String(y), color, q, foot: `${fmt(n, 0)} Preismodelle` }));
+      spreadStrips(body, items, { format: ct });
+      return { head: ["Kostenpflichtig seit", "Anzahl", "P10", "P25", "Median", "P75", "P90"], rows: src.map(([y, n, q]) => [String(y), fmt(n, 0), ...q.map((v) => fmt(v, 1))]) };
+    },
+    foot: () => "Keine Zeitreihe: Jede Station geht mit ihrem aktuell gemeldeten Preis ein.",
+  });
+
+  // 12 Qualität
   card("quality", {
     title: () => "Aussortierte Zeilen nach Regel",
     sub: () => `${fmt(D.meta.quality.rows_raw, 0)} Zeilen gelesen, ${fmt(D.meta.quality.rows_kept, 0)} plausibel (${fmt((D.meta.quality.rows_kept / D.meta.quality.rows_raw) * 100, 1)} %)`,

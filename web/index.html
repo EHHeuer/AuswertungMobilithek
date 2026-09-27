@@ -32,6 +32,7 @@
         <a href="#rhythmus">Rhythmus</a>
         <a href="#regionen">Regionen</a>
         <a href="#stammdaten">Stammdaten</a>
+        <a href="#preise">Preise</a>
         <a href="#methodik">Methodik</a>
       </nav>
       <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Farbschema wechseln">
@@ -244,13 +245,32 @@
       </div>
     </section>
 
+    <!-- 10b Preise -->
+    <section class="section" id="preise">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">11</span>
+          <h2>Ad-hoc-Preise</h2>
+          <p>Gemeldete Preismodelle für spontanes Laden ohne Vertrag, getrennt nach Normal- und Schnellladepunkten. Arbeitspreise in Euro wurden in Cent umgerechnet, offensichtliche Einheitenfehler (z. B. »0,39 Cent«) korrigiert.</p>
+          <p class="note">Momentaufnahme des zuletzt gemeldeten Preismodells je Station, keine Preishistorie. Die Kohorten zeigen den heutigen Preis von Stationen, die im jeweiligen Jahr kostenpflichtig wurden.</p>
+        </header>
+        <div class="stack">
+          <div class="card" data-chart="priceKpis"></div>
+          <div class="split">
+            <div class="card" data-chart="priceHist"></div>
+            <div class="card" data-chart="priceCohort"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- 11 Methodik -->
     <section class="section section--method" id="methodik">
       <div class="wrap section__grid">
         <header class="section__head">
-          <span class="section__no">11</span>
+          <span class="section__no">12</span>
           <h2>Datenqualität und Methodik</h2>
-          <p>Die Rohdaten enthalten Ausreißer bis hin zu negativen Energiemengen und Zeitstempeln aus dem Jahr 1809. Jede Zeile durchläuft die Regeln rechts in dieser Reihenfolge, die erste zutreffende zählt.</p>
+          <p>Die Metadaten der NOW beschreiben Ausreißer bis hin zu negativen Energiemengen und Zeitstempeln aus dem Jahr 1809. Jede Zeile durchläuft deshalb die Regeln rechts in dieser Reihenfolge, die erste zutreffende zählt. Das Diagramm zeigt, wie oft das im aktuellen Datenstand tatsächlich passiert.</p>
         </header>
         <div class="stack">
           <div class="card" data-chart="quality"></div>

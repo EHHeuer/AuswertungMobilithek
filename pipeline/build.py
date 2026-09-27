@@ -36,7 +36,7 @@ RAW_DIR = ROOT / "data" / "raw"
 OUT_DEFAULT = ROOT / "web" / "data" / "obelis.json"
 
 BASE_URL = "https://d1269bxe5ubfat.cloudfront.net/obelisoe/rawData/"
-FILES = {"lv": "df_lv.csv", "ls": "df_ls.csv", "lp": "df_lp.csv"}
+FILES = {"lv": "df_lv.csv", "ls": "df_ls.csv", "lp": "df_lp.csv", "pm": "df_pm.csv"}
 
 SOURCE_NOTE = (
     '"OBELISöffentlich: Stamm- und Betriebsdaten geförderter öffentlich zugänglicher '
@@ -130,6 +130,10 @@ def iso(d) -> str | None:
     return d.strftime("%Y-%m-%d")
 
 
+def date_trunc_month(d) -> dt.datetime:
+    return dt.datetime(d.year, d.month, 1)
+
+
 def class_case(col: str) -> str:
     parts = [f"WHEN {col} <= {c['hi']} THEN {c['id']}" for c in CLASSES]
     return "CASE " + " ".join(parts) + " END"
@@ -151,6 +155,14 @@ def load_lv(con: duckdb.DuckDBPyConnection, path: Path, start: str, end: str) ->
 
     num = lambda c: f"TRY_CAST(replace({c}, ',', '.') AS DOUBLE)"  # noqa: E731
     R = RULES
+    if end == "auto":
+        # Erster Monat nach dem letzten Ladebeginn, der nicht in der Zukunft liegt
+        last = con.execute(
+            f"SELECT max(b) FROM (SELECT TRY_CAST(beginn AS TIMESTAMP) AS b FROM {src}) "
+            "WHERE b <= current_timestamp::TIMESTAMP"
+        ).fetchone()[0]
+        end = (date_trunc_month(last) + dt.timedelta(days=32)).replace(day=1).strftime("%Y-%m-%d")
+        log(f"  Berichtszeitraum endet automatisch vor {end}")
     # Typisieren und Regeln prüfen in einem Durchlauf, ohne Rohtabelle zu materialisieren
     con.execute(
         f"""
@@ -421,6 +433,9 @@ def profile_master(con, path: Path, kind: str, overrides: dict) -> dict:
     )
     cols = [r[0] for r in con.execute(f"DESCRIBE {tbl}").fetchall()]
     m = detect(cols, overrides)
+    if kind == "ls" and "power" not in overrides:
+        # In df_ls ist "anschlussleistungInKilowatt" der Netzanschluss der Station, keine Ladepunktleistung
+        m.pop("power", None)
     log(f"  erkannte Spalten: {m}")
     rows = con.execute(f"SELECT count(*) FROM {tbl}").fetchone()[0]
     out: dict = {"file": path.name, "rows": rows, "columns": cols, "detected": m}
@@ -511,6 +526,73 @@ def profile_master(con, path: Path, kind: str, overrides: dict) -> dict:
     return out
 
 
+
+# --------------------------------------------------------------------------- Preismodelle
+
+
+def profile_prices(con, path: Path) -> dict | None:
+    """Ad-hoc-Preismodelle (df_pm.csv): Arbeitspreis in ct/kWh je Normal-/Schnellladepunkt.
+    Momentaufnahme des gemeldeten Preismodells, keine Preishistorie."""
+    log(f"Profiliere {path.name}")
+    con.execute(
+        f"CREATE OR REPLACE TABLE pm AS SELECT * FROM read_csv_auto('{path.as_posix()}', delim=';', "
+        "header=true, all_varchar=true)"
+    )
+    cols = {r[0] for r in con.execute("DESCRIBE pm").fetchall()}
+    need = {"normalOderSchnellLadepunkt", "gebuehrProArbeit", "gebuehrProArbeitEinheit", "kostenlos"}
+    if not need <= cols:
+        log(f"  df_pm: Spalten fehlen {need - cols}, übersprungen")
+        return None
+    num = lambda c: f"TRY_CAST(replace({c}, ',', '.') AS DOUBLE)"  # noqa: E731
+    has = lambda c: f"COALESCE({num(c)}, 0) > 0" if c in cols else "FALSE"  # noqa: E731
+    con.execute(
+        f"""
+        CREATE OR REPLACE TABLE pmc AS
+        SELECT lower(trim(normalOderSchnellLadepunkt)) AS typ,
+               -- offensichtliche Einheitenverwechslung korrigieren: "0,39 Cent" = 39 ct, "39 Euro" = 39 ct
+               CASE
+                 WHEN gebuehrProArbeitEinheit = 'Euro pro kWh' AND {num('gebuehrProArbeit')} > 5 THEN {num('gebuehrProArbeit')}
+                 WHEN gebuehrProArbeitEinheit = 'Euro pro kWh' THEN {num('gebuehrProArbeit')} * 100
+                 WHEN gebuehrProArbeitEinheit = 'Cent pro kWh' AND {num('gebuehrProArbeit')} < 2 THEN {num('gebuehrProArbeit')} * 100
+                 WHEN gebuehrProArbeitEinheit = 'Cent pro kWh' THEN {num('gebuehrProArbeit')}
+               END AS ct,
+               COALESCE({num('kostenlos')}, 0) = 1 AS frei,
+               {has('gebuehrProZeit')} AS zeit,
+               {has('gebuehrProLadevorgang')} AS vorgang,
+               {"year(TRY_CAST(kostenpflichtigSeit AS TIMESTAMP))" if "kostenpflichtigSeit" in cols else "NULL"} AS seit
+        FROM pm WHERE normalOderSchnellLadepunkt IS NOT NULL
+        """
+    )
+    edges = [i * 5 for i in range(0, 25)]  # 0..120 ct, letzter Bin = Überlauf
+    out = {"rows": con.execute("SELECT count(*) FROM pmc").fetchone()[0], "edges": edges, "types": {}, "cohorts": {}}
+    valid = "NOT frei AND ct > 0 AND ct <= 200"
+    for typ, n, frei, zeit, vorgang, q in con.execute(
+        f"""
+        SELECT typ, count(*), avg(frei::INT), avg(zeit::INT), avg(vorgang::INT),
+               quantile_cont(ct, [0.1, 0.25, 0.5, 0.75, 0.9]) FILTER ({valid})
+        FROM pmc GROUP BY 1 ORDER BY 1
+        """
+    ).fetchall():
+        hist = [0] * len(edges)
+        for b, c in con.execute(
+            f"SELECT LEAST(CAST(floor(ct / 5) AS INTEGER), {len(edges) - 1}), count(*) FROM pmc "
+            f"WHERE typ = ? AND {valid} GROUP BY 1", [typ]
+        ).fetchall():
+            hist[b] += c
+        out["types"][typ] = {
+            "n": n, "free_share": r3(frei), "time_fee_share": r3(zeit), "session_fee_share": r3(vorgang),
+            "q": [r3(x) for x in q] if q else None, "hist": hist,
+        }
+        out["cohorts"][typ] = [
+            [y, c, [r3(x) for x in qq]] for y, c, qq in con.execute(
+                f"SELECT seit, count(*), quantile_cont(ct, [0.1, 0.25, 0.5, 0.75, 0.9]) FROM pmc "
+                f"WHERE typ = ? AND {valid} AND seit BETWEEN 2015 AND year(current_date) "
+                "GROUP BY 1 HAVING count(*) >= 20 ORDER BY 1", [typ]
+            ).fetchall()
+        ]
+    con.execute("DROP TABLE pm; DROP TABLE pmc")
+    return out
+
 # --------------------------------------------------------------------------- main
 
 
@@ -519,11 +601,13 @@ def main() -> None:
     ap.add_argument("--lv", type=Path, help="Pfad zu df_lv.csv (sonst Download nach data/raw)")
     ap.add_argument("--ls", type=Path, help="Pfad zu df_ls.csv")
     ap.add_argument("--lp", type=Path, help="Pfad zu df_lp.csv")
+    ap.add_argument("--pm", type=Path, help="Pfad zu df_pm.csv (Ad-hoc-Preismodelle)")
     ap.add_argument("--no-lp", action="store_true", help="Ladepunkt-Stammdaten nicht verwenden")
     ap.add_argument("--no-download", action="store_true", help="Nichts herunterladen")
     ap.add_argument("--force-download", action="store_true")
     ap.add_argument("--start", default="2017-01-01", help="Frühester gültiger Ladebeginn")
-    ap.add_argument("--end", default="2025-01-01", help="Erster Tag nach dem Berichtszeitraum")
+    ap.add_argument("--end", default="auto",
+                    help="Erster Tag nach dem Berichtszeitraum (Standard: aus den Daten ermittelt)")
     ap.add_argument("--out", type=Path, default=OUT_DEFAULT)
     ap.add_argument("--db", type=Path, default=ROOT / "data" / "work.duckdb",
                     help="DuckDB-Arbeitsdatei (auf Platte, damit 20 Mio. Zeilen nicht in den RAM müssen)")
@@ -549,6 +633,7 @@ def main() -> None:
     lv_path = resolve("lv", args.lv)
     ls_path = resolve("ls", args.ls, optional=True)
     lp_path = None if args.no_lp else resolve("lp", args.lp, optional=True)
+    pm_path = resolve("pm", args.pm, optional=True)
 
     overrides = dict(kv.split("=", 1) for kv in args.map)
 
@@ -576,6 +661,7 @@ def main() -> None:
         master["ls"] = profile_master(con, ls_path, "ls", overrides)
     if lp_path:
         master["lp"] = profile_master(con, lp_path, "lp", overrides)
+    prices = profile_prices(con, pm_path) if pm_path else None
     con.close()
 
     out = {
@@ -600,6 +686,7 @@ def main() -> None:
         "hist": hist,
         "lp": lpl,
         "master": master,
+        "prices": prices,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as fh:
