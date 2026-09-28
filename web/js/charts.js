@@ -765,3 +765,53 @@ export function sparkline(values, color, W = 200) {
   el("circle", { cx: last[0], cy: last[1], r: 3, fill: color || cssVar("--accent") }, svg);
   return svg;
 }
+
+// ------------------------------------------------------------------ Gestapelte horizontale Balken
+
+/** items: [{label, parts: [value, ...]}]; keys: [{label, color}] in derselben Reihenfolge wie parts */
+export function stackedHBars(container, items, keys, opts = {}) {
+  container.innerHTML = "";
+  const W = container.clientWidth || 600;
+  const rowH = opts.rowH || 24;
+  const fmtV = opts.format || ((v) => fmt(v, 0));
+  const labelW = Math.min(W * 0.4, Math.max(...items.map((i) => textWidth(i.label, 12.5))) + 12);
+  const maxChars = Math.floor((labelW - 12) / (12.5 * 0.56));
+  const clip = (str) => (str.length > maxChars ? str.slice(0, Math.max(3, maxChars - 1)) + "…" : str);
+  const totals = items.map((i) => i.parts.reduce((a, b) => a + b, 0));
+  const valW = Math.max(...totals.map((t) => textWidth(fmtV(t)))) + 10;
+  const max = Math.max(...totals, 1);
+  const x = linear(0, max, labelW, W - valW);
+  const H = items.length * rowH + 8;
+  const bw = Math.min(14, rowH - 9);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img" });
+  const g = el("g", { class: "grid" }, svg);
+  for (const t of niceTicks(0, max, 4)) if (t && t <= max) el("line", { x1: x(t), x2: x(t), y1: 2, y2: H - 4 }, g);
+  items.forEach((it, i) => {
+    const cy = i * rowH + rowH / 2 + 2;
+    const lab = el("text", { class: "cat-label", x: labelW - 10, y: cy + 4, "text-anchor": "end", text: clip(it.label) }, svg);
+    if (clip(it.label) !== it.label) el("title", { text: it.label }, lab);
+    let acc = 0;
+    const segs = it.parts.map((v, k) => ({ v, k })).filter((s) => s.v > 0);
+    segs.forEach((s, j) => {
+      const x0 = x(acc) + (j ? 1 : 0);
+      acc += s.v;
+      const x1 = x(acc) - (j < segs.length - 1 ? 1 : 0);
+      const w = Math.max(0, x1 - x0);
+      if (!w) return;
+      const last = j === segs.length - 1;
+      const r = last ? Math.min(4, w, bw / 2) : 0;
+      const y0 = cy - bw / 2;
+      const d = r
+        ? `M${x0},${y0}H${x0 + w - r}Q${x0 + w},${y0} ${x0 + w},${y0 + r}V${y0 + bw - r}Q${x0 + w},${y0 + bw} ${x0 + w - r},${y0 + bw}H${x0}Z`
+        : `M${x0},${y0}H${x0 + w}V${y0 + bw}H${x0}Z`;
+      el("path", { d, fill: keys[s.k].color }, svg);
+    });
+    el("text", { class: "bar-label", x: x(totals[i]) + 6, y: cy + 4, text: fmtV(totals[i]) }, svg);
+    const hit = el("rect", { x: 0, y: i * rowH, width: W, height: rowH, fill: "transparent" }, svg);
+    const tipHtml = tipRows(it.label, keys.map((k, j) => ({ label: k.label, color: k.color, value: fmtV(it.parts[j]) })), `Summe: ${fmtV(totals[i])}`);
+    hit.addEventListener("mousemove", (evt) => showTip(evt, tipHtml));
+    hit.addEventListener("mouseleave", hideTip);
+  });
+  el("line", { class: "baseline", x1: labelW, x2: labelW, y1: 2, y2: H - 4 }, svg);
+  container.append(svg, legend(keys, true));
+}

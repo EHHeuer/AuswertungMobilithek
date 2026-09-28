@@ -44,7 +44,7 @@ Demodaten neu erzeugen: `python pipeline/make_demo.py && python pipeline/build.p
 | 07 Rhythmus | Heatmap Wochentag × Startstunde (Starts, Dauer, Energie) |
 | 08 Verteilungen | Ridgeline je Jahr für Energie, Dauer, Leistung |
 | 09 Regionen | Kachelkarte und Rangfolge der Bundesländer, Profil nach Lage |
-| 10 Stammdaten | Stationskarte mit Zeitraffer, Inbetriebnahmen kumuliert, Bundesland, Förderprogramm |
+| 10 Stammdaten | Stationskarte mit Zeitraffer, Inbetriebnahmen kumuliert, Bundesland, Förderprogramm, Betreiber nach AC/DC |
 | 11 Preise | Ad-hoc-Arbeitspreise Normal/Schnell, Zeit- und Vorgangsgebühren, Kohorten nach "kostenpflichtig seit" (df_pm.csv) |
 | 12 Methodik | Aussortierte Zeilen je Regel, Annahmen, Grenzen |
 
@@ -66,6 +66,10 @@ Lage), Leistungsklassen. Jede Karte hat eine Tabellenansicht, Hell- und Dunkelmo
 
 - Die Preismodelle sind eine Momentaufnahme je Station, keine Preishistorie. Offensichtliche
   Einheitenfehler werden korrigiert ("Cent" unter 2 wird als Euro gelesen, "Euro" über 5 als Cent).
+- Betreiber: Ohne `df_lp.csv` zählt die Auswertung **Stationen**, nicht Ladepunkte. AC/DC kommt aus
+  dem Preismodell der Station (Normal- oder Schnellladepunkt). Mit `df_lp.csv` schaltet die Pipeline
+  automatisch auf Ladepunkte um (AC bis 22 kW, DC darüber). Namen werden nur um Rechtsformen
+  bereinigt, Konzerntöchter (z. B. mehrere EnBW-Gesellschaften) bleiben getrennt.
 - In `df_ls.csv` ist `anschlussleistungInKilowatt` der Netzanschluss der Station und wird nicht als
   Ladeleistung verwendet. Förderprogramme liegen nur als ID vor (Namen stünden in `df_fp.csv`).
 

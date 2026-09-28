@@ -1,6 +1,6 @@
 import {
   h, cssVar, lineChart, stackedArea, stackedColumns, hBars, heatmap, ridgeline, lorenz,
-  spreadStrips, tileMap, sparkline, tipRows, seqColor, STATE_TILES,
+  spreadStrips, tileMap, sparkline, tipRows, seqColor, STATE_TILES, stackedHBars,
 } from "./charts.js";
 import { fmt, fmtCompact, fmtEnergy, fmtHours, fmtPeriod, parseDate } from "./format.js";
 
@@ -732,6 +732,45 @@ function defineCards() {
       const items = src.map(([k, v]) => ({ label: name(k), value: v }));
       hBars(body, items, { format: (v) => fmt(v, 0), rowH: 24, color: cssVar("--c1") });
       return { head: ["Kategorie", "Anzahl"], rows: items.map((i) => [i.label, fmt(i.value, 0)]) };
+    },
+  });
+
+  card("operators", {
+    available: () => !!D.operators,
+    title: () => `Geförderte ${D.operators.units_label} je Betreiber`,
+    sub: () => {
+      const o = D.operators;
+      return `${fmt(o.n_operators, 0)} Betreiber · die zehn größten halten ${fmt(o.top10_share * 100, 0)} % aller ${o.units_label}`;
+    },
+    tools: () => [
+      { type: "seg", key: "opSort", default: "total", options: [["total", "Gesamt"], ["ac", "AC"], ["dc", "DC"]] },
+      { type: "seg", key: "opN", default: 15, options: [[15, "Top 15"], [40, "Top 40"]] },
+    ],
+    render: (body) => {
+      const o = D.operators;
+      const lp = o.basis === "lp";
+      const keys = lp
+        ? [{ label: "AC (bis 22 kW)", color: classColor(2) }, { label: "DC (über 22 kW)", color: classColor(4) }]
+        : [{ label: "nur Normalladen (AC)", color: classColor(2) }, { label: "nur Schnellladen (DC)", color: classColor(4) }, { label: "beides", color: classColor(3) }];
+      const sort = tool("opSort", "total");
+      const rows = o.top.map(([name, ac, dc, both]) => ({ name, ac, dc, both, total: ac + dc + both }));
+      const val = (r) => (sort === "ac" ? r.ac : sort === "dc" ? r.dc : r.total);
+      rows.sort((a, b) => val(b) - val(a));
+      const shown = rows.slice(0, tool("opN", 15));
+      const items = shown.map((r) => ({ label: r.name, parts: lp ? [r.ac, r.dc] : [r.ac, r.dc, r.both] }));
+      stackedHBars(body, items, keys, { rowH: 24 });
+      return {
+        head: ["Betreiber", ...keys.map((k) => k.label), "Summe"],
+        rows: rows.map((r) => [r.name, fmt(r.ac, 0), fmt(r.dc, 0), ...(lp ? [] : [fmt(r.both, 0)]), fmt(r.total, 0)]),
+      };
+    },
+    foot: () => {
+      const o = D.operators;
+      const t = o.totals;
+      const base = o.basis === "lp"
+        ? `Ladepunkte aus df_lp.csv: AC ${fmt(t.ac, 0)}, DC ${fmt(t.dc, 0)}.`
+        : `Zählt Stationen, nicht Ladepunkte: df_ls.csv enthält keine Ladepunktzahl. AC/DC aus dem Preismodell der Station (Normal- oder Schnellladepunkt, Grenze 22 kW). Gesamt: ${fmt(t.ac, 0)} AC, ${fmt(t.dc, 0)} DC, ${fmt(t.both, 0)} gemischt.`;
+      return `${base} Betreibernamen wie gemeldet, nur Rechtsformen vereinheitlicht; Konzerntöchter bleiben getrennt.`;
     },
   });
 

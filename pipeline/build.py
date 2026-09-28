@@ -527,6 +527,95 @@ def profile_master(con, path: Path, kind: str, overrides: dict) -> dict:
 
 
 
+
+# --------------------------------------------------------------------------- Betreiber
+
+LEGAL_FORMS = (r"\b(gmbh|mbh|ag|se|kg|kgaa|co|ug|ohg|gbr|eg|ev|e\.v|aktiengesellschaft|"
+               r"haftungsbeschr(ae|ä)nkt|und|u)\b")
+
+
+def operators(con, ls_path: Path, pm_path: Path | None, lp_path: Path | None, top: int = 40) -> dict | None:
+    """Geförderte Ladeinfrastruktur je Betreiber, getrennt nach AC und DC.
+
+    Mit df_lp.csv: Ladepunkte je Betreiber, AC = Nennleistung bis 22 kW, DC = darüber.
+    Ohne df_lp.csv: Stationen je Betreiber, Typ aus df_pm.csv (Normal- bzw. Schnellladepunkt
+    im Preismodell der Station). Nur die größten Betreiber werden ausgegeben."""
+    con.execute(
+        f"CREATE OR REPLACE TABLE op_ls AS SELECT * FROM read_csv_auto('{ls_path.as_posix()}', delim=';', "
+        "header=true, all_varchar=true)"
+    )
+    cols = {r[0] for r in con.execute("DESCRIBE op_ls").fetchall()}
+    if not {"id", "betreiber"} <= cols:
+        log("  Betreiber: Spalten id/betreiber fehlen in df_ls, übersprungen")
+        return None
+    # Schlüssel: Rechtsformen und Satzzeichen entfernen, damit "X GmbH" und "X Gmbh." zusammenfallen
+    con.execute(
+        f"""
+        CREATE OR REPLACE TABLE op_map AS
+        SELECT TRY_CAST(id AS DOUBLE) AS ls_id, betreiber,
+               trim(regexp_replace(regexp_replace(lower(betreiber), '{LEGAL_FORMS}', ' ', 'g'),
+                                   '[^a-z0-9äöüß]+', ' ', 'g')) AS okey
+        FROM op_ls WHERE NULLIF(trim(betreiber), '') IS NOT NULL
+        """
+    )
+    basis = None
+    if lp_path:
+        lcols = [r[0] for r in con.execute(
+            f"DESCRIBE SELECT * FROM read_csv_auto('{lp_path.as_posix()}', all_varchar=true, header=true)"
+        ).fetchall()]
+        lref = next((c for c in lcols if re.search(r"^(ls_id|ladestation_id)$", c.lower())), None)
+        lpow = next((c for c in lcols if re.search(r"leistung", c.lower())), None)
+        if lref and lpow:
+            basis = "lp"
+            con.execute(
+                f"""
+                CREATE OR REPLACE TABLE op_units AS
+                SELECT TRY_CAST("{lref}" AS DOUBLE) AS ls_id,
+                       CASE WHEN TRY_CAST(replace("{lpow}", ',', '.') AS DOUBLE) <= 22 THEN 'ac' ELSE 'dc' END AS typ
+                FROM read_csv_auto('{lp_path.as_posix()}', all_varchar=true, header=true)
+                WHERE TRY_CAST(replace("{lpow}", ',', '.') AS DOUBLE) > 0
+                """
+            )
+    if basis is None and pm_path:
+        basis = "ls"
+        con.execute(
+            f"""
+            CREATE OR REPLACE TABLE op_units AS
+            SELECT TRY_CAST(ladestation_id AS DOUBLE) AS ls_id,
+                   CASE string_agg(DISTINCT lower(normalOderSchnellLadepunkt), '+' ORDER BY lower(normalOderSchnellLadepunkt))
+                     WHEN 'normal' THEN 'ac' WHEN 'schnell' THEN 'dc' ELSE 'both' END AS typ
+            FROM read_csv_auto('{pm_path.as_posix()}', delim=';', header=true, all_varchar=true)
+            GROUP BY 1
+            """
+        )
+    if basis is None:
+        log("  Betreiber: weder df_lp noch df_pm vorhanden, übersprungen")
+        return None
+    rows = con.execute(
+        """
+        WITH j AS (SELECT m.okey, m.betreiber, u.typ FROM op_units u JOIN op_map m USING (ls_id)),
+        names AS (SELECT okey, mode(betreiber) AS name FROM j GROUP BY 1)
+        SELECT n.name, count(*) FILTER (typ = 'ac'), count(*) FILTER (typ = 'dc'), count(*) FILTER (typ = 'both'),
+               count(*) AS total
+        FROM j JOIN names n USING (okey) GROUP BY 1 ORDER BY total DESC
+        """
+    ).fetchall()
+    total = sum(r[4] for r in rows)
+    tot_types = [sum(r[i] for r in rows) for i in (1, 2, 3)]
+    out = {
+        "basis": basis,
+        "units_label": "Ladepunkte" if basis == "lp" else "Ladestationen",
+        "n_operators": len(rows),
+        "total": total,
+        "totals": {"ac": tot_types[0], "dc": tot_types[1], "both": tot_types[2]},
+        "top10_share": r3(sum(r[4] for r in rows[:10]) / total) if total else None,
+        "top": [[r[0], r[1], r[2], r[3]] for r in rows[:top]],
+        "rest": [sum(r[i] for r in rows[top:]) for i in (1, 2, 3)],
+    }
+    log(f"  Betreiber: {len(rows):,} Betreiber, Basis {out['units_label']}")
+    con.execute("DROP TABLE op_ls; DROP TABLE op_map; DROP TABLE op_units")
+    return out
+
 # --------------------------------------------------------------------------- Preismodelle
 
 
@@ -662,6 +751,7 @@ def main() -> None:
     if lp_path:
         master["lp"] = profile_master(con, lp_path, "lp", overrides)
     prices = profile_prices(con, pm_path) if pm_path else None
+    ops = operators(con, ls_path, pm_path, lp_path) if ls_path else None
     con.close()
 
     out = {
@@ -687,6 +777,7 @@ def main() -> None:
         "lp": lpl,
         "master": master,
         "prices": prices,
+        "operators": ops,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as fh:
