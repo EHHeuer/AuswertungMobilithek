@@ -598,11 +598,12 @@ def occupancy(con) -> dict:
     return {"profile": prof, "peaks": peaks, "ac_max_kw": AC_MAX_KW}
 
 
-def top_stations(con, prices: dict | None, n: int = 10) -> dict:
-    """Top-Stationen nach geladener Energie je Jahr, getrennt AC/DC (Station ist DC, sobald ein
-    Ladepunkt über 22 kW liegt). Umsatz = Energie x Ad-hoc-Arbeitspreis (P25/Median/P75 aus df_pm)
-    als grobe Schätzung. IDs sind in den Rohdaten anonymisiert."""
-    log("Top-Stationen")
+def top_points(con, prices: dict | None, n: int = 10) -> dict:
+    """Top-Ladepunkte nach geladener Energie je Jahr, getrennt AC (bis 22 kW) und DC. Normiert auf
+    den einzelnen Ladepunkt, damit große Stationen nicht allein durch ihre Punktzahl vorn liegen.
+    Umsatz = Energie x Ad-hoc-Arbeitspreis (P25/Median/P75 aus df_pm) als grobe Schätzung.
+    IDs sind in den Rohdaten anonymisiert."""
+    log("Top-Ladepunkte")
     price = {}
     if prices:
         for typ, key in (("ac", "normal"), ("dc", "schnell")):
@@ -612,27 +613,28 @@ def top_stations(con, prices: dict | None, n: int = 10) -> dict:
     out: dict = {"price_ct": price, "years": {}}
     rows = con.execute(
         f"""
-        WITH st AS (
-          SELECT y, ls, any_value(bl) AS bl, any_value(lage) AS lage, max(kw) AS kw_max,
-                 count(DISTINCT lp) AS lps, count(*) AS n, sum(kwh) AS kwh, sum(h) AS hours
-          FROM lvc GROUP BY y, ls
+        WITH p AS (
+          SELECT y, lp, any_value(ls) AS ls, any_value(bl) AS bl, any_value(lage) AS lage, max(kw) AS kw,
+                 count(*) AS n, sum(kwh) AS kwh, sum(h) AS hours, count(DISTINCT month) AS months
+          FROM lvc GROUP BY y, lp
         ), r AS (
-          SELECT *, CASE WHEN kw_max <= {AC_MAX_KW} THEN 'ac' ELSE 'dc' END AS typ,
-                 row_number() OVER (PARTITION BY y, CASE WHEN kw_max <= {AC_MAX_KW} THEN 'ac' ELSE 'dc' END
+          SELECT *, CASE WHEN kw <= {AC_MAX_KW} THEN 'ac' ELSE 'dc' END AS typ,
+                 row_number() OVER (PARTITION BY y, CASE WHEN kw <= {AC_MAX_KW} THEN 'ac' ELSE 'dc' END
                                     ORDER BY kwh DESC) AS rn
-          FROM st
+          FROM p
         )
-        SELECT y, typ, rn, ls, bl, lage, kw_max, lps, n, kwh, hours FROM r WHERE rn <= {n} ORDER BY y, typ, rn
+        SELECT y, typ, rn, lp, ls, bl, lage, kw, n, kwh, hours, months FROM r WHERE rn <= {n} ORDER BY y, typ, rn
         """
     ).fetchall()
-    for y, typ, rn, ls, bl, lage, kw_max, lps, cnt, kwh, hours in rows:
-        p = price.get(typ)
+    for y, typ, rn, lp, ls, bl, lage, kw, cnt, kwh, hours, months in rows:
+        pr = price.get(typ)
         out["years"].setdefault(str(y), {}).setdefault(typ, []).append({
-            "rank": rn, "id": ls, "bl": bl, "lage": lage, "kw_max": r3(kw_max), "lps": lps, "n": cnt,
-            "kwh": r3(kwh), "hours": r3(hours),
-            "eur": [r3(kwh * c / 100) for c in p] if p else None,
+            "rank": rn, "id": lp, "ls": ls, "bl": bl, "lage": lage, "kw": r3(kw), "n": cnt,
+            "kwh": r3(kwh), "hours": r3(hours), "months": months,
+            "eur": [r3(kwh * c / 100) for c in pr] if pr else None,
         })
     return out
+
 
 # --------------------------------------------------------------------------- Betreiber
 
@@ -860,7 +862,7 @@ def main() -> None:
     prices = profile_prices(con, pm_path) if pm_path else None
     ops = operators(con, ls_path, pm_path, lp_path) if ls_path else None
     occ = occupancy(con)
-    tops = top_stations(con, prices)
+    tops = top_points(con, prices)
     con.close()
 
     out = {
@@ -888,7 +890,7 @@ def main() -> None:
         "prices": prices,
         "operators": ops,
         "occupancy": occ,
-        "top_stations": tops,
+        "top_points": tops,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as fh:

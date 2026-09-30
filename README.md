@@ -45,7 +45,7 @@ Demodaten neu erzeugen: `python pipeline/make_demo.py && python pipeline/build.p
 | Belegung | Anteil belegter Ladepunkte je Stunde (Gesamt/AC/DC), Tagesprofil Werktag/Sa/So, Heatmap, typischer Gipfel und Spitzenstunde je Jahr |
 | 08 Verteilungen | Ridgeline je Jahr für Energie, Dauer, Leistung |
 | 09 Regionen | Kachelkarte und Rangfolge der Bundesländer, Profil nach Lage |
-| Top 10 | Stationen mit der meisten Energie je Jahr, AC/DC getrennt, mit geschätztem Umsatz |
+| Top 10 | Ladepunkte mit der meisten Energie je Jahr, AC/DC getrennt, mit Belegung und geschätztem Umsatz |
 | 10 Stammdaten | Stationskarte mit Zeitraffer, Inbetriebnahmen kumuliert, Bundesland, Förderprogramm, Betreiber nach AC/DC |
 | 11 Preise | Ad-hoc-Arbeitspreise Normal/Schnell, Zeit- und Vorgangsgebühren, Kohorten nach "kostenpflichtig seit" (df_pm.csv) |
 | 12 Methodik | Aussortierte Zeilen je Regel, Annahmen, Grenzen |
@@ -70,7 +70,7 @@ Lage), Leistungsklassen. Jede Karte hat eine Tabellenansicht, Hell- und Dunkelmo
   Einheitenfehler werden korrigiert ("Cent" unter 2 wird als Euro gelesen, "Euro" über 5 als Cent).
 - Belegung: Ein Ladepunkt gilt von Beginn bis Ende eines Vorgangs als belegt (inkl. Standzeit).
   Nenner sind die im Monat meldenden Ladepunkte. AC = Nennleistung bis 22 kW, DC = darüber.
-- Top-Stationen: IDs sind anonymisiert, Name/Betreiber sind nicht zuordenbar. Der Umsatz ist eine
+- Top-Ladepunkte: IDs sind anonymisiert, Name/Betreiber sind nicht zuordenbar. Der Umsatz ist eine
   grobe Bruttoschätzung (Energie × P25/Median/P75 des Ad-hoc-Arbeitspreises aus `df_pm.csv`),
   keine gemeldete Größe.
 - Betreiber: Ohne `df_lp.csv` zählt die Auswertung **Stationen**, nicht Ladepunkte. AC/DC kommt aus
