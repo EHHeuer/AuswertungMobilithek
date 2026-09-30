@@ -224,6 +224,8 @@ button, select { font: inherit; color: inherit; }
 .section { padding: 84px 0 12px; }
 .section__grid { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 48px; align-items: start; }
 .section__head { position: sticky; top: 108px; }
+.section__grid--stacked { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+.section__grid--stacked .section__head { position: static; max-width: 780px; }
 .section__no { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: var(--muted); display: block; margin-bottom: 12px; }
 .section__no::after { content: ""; display: inline-block; width: 28px; height: 1px; background: var(--axis); vertical-align: middle; margin-left: 10px; }
 .section__head h2 { font-family: var(--serif); font-weight: 400; font-size: 32px; line-height: 1.1; letter-spacing: -0.015em; margin: 0 0 16px; }

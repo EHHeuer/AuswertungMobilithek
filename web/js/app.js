@@ -886,26 +886,31 @@ function defineCards() {
       const LAGE_KURZ = { "Tankstelle an einer Bundesautobahn": "Autobahn-Tankstelle", "Öffentlicher Parkplatz": "Öff. Parkplatz" };
       const occ = (r) => (r.hours / (days * 24)) * 100;
       const table = h("table", { class: "data-table lage-table top-table" }, [
-        h("thead", {}, h("tr", {}, ["#", "Ladepunkt", "Bundesland", "Lage", "kW", "Vorg./Tag", "belegt", "Energie", "Umsatz ca."].map((c) => h("th", { text: c })))),
+        h("thead", {}, h("tr", {}, ["#", "Ladepunkt", "Ort", "kW", "Vorg./Tag", "belegt", "Ø Dauer", "Ø Energie", "Ø Leistung", "Energie", "Umsatz ca."].map((c) => h("th", { text: c })))),
         h("tbody", {}, rows.map((r) => h("tr", {}, [
           h("td", { text: String(r.rank) }),
           h("td", { text: r.id.replace("_shuffled", ""), title: `Station ${r.ls.replace("_shuffled", "")}` }),
-          h("td", { text: r.bl || "–" }),
-          h("td", { text: LAGE_KURZ[r.lage] || r.lage, title: r.lage }),
+          h("td", { title: `${r.bl || "–"} · ${r.lage}` }, [
+            h("span", { text: r.bl || "–" }),
+            h("span", { class: "cell-sub", text: LAGE_KURZ[r.lage] || r.lage }),
+          ]),
           h("td", { text: fmt(r.kw, 0) }),
           h("td", { text: fmt(r.n / days, 1) }),
           h("td", { text: `${fmt(occ(r), 0)} %` }),
+          h("td", { text: fmtHours(r.hours / r.n, true) }),
+          h("td", { text: `${fmt(r.kwh / r.n, 1)} kWh` }),
+          h("td", { text: `${fmt(r.kwh / r.hours, 1)} kW` }),
           h("td", {}, bar(r.kwh, maxE, `${fmt(r.kwh / 1000, 0)} MWh`)),
           h("td", {}, r.eur ? [bar(r.eur[1], maxU, eur(r.eur[1])), h("span", { class: "cell-sub", text: `${fmt(r.eur[0] / 1000, 0)} bis ${fmt(r.eur[2] / 1000, 0)} Tsd.` })] : "–"),
         ]))),
       ]);
       body.append(h("div", { class: "lage-wrap" }, table));
       return {
-        head: ["Rang", "Ladepunkt", "Station", "Bundesland", "Lage", "kW", "Vorgänge", "belegt %", "Energie kWh", "Umsatz P25 €", "Umsatz Median €", "Umsatz P75 €"],
-        rows: rows.map((r) => [r.rank, r.id, r.ls, r.bl, r.lage, fmt(r.kw, 0), fmt(r.n, 0), fmt(occ(r), 1), fmt(r.kwh, 0), ...(r.eur || [null, null, null]).map((v) => fmt(v, 0))]),
+        head: ["Rang", "Ladepunkt", "Station", "Bundesland", "Lage", "kW", "Vorgänge", "belegt %", "Ø Dauer h", "Ø Energie kWh", "Ø Leistung kW", "Energie kWh", "Umsatz P25 €", "Umsatz Median €", "Umsatz P75 €"],
+        rows: rows.map((r) => [r.rank, r.id, r.ls, r.bl, r.lage, fmt(r.kw, 0), fmt(r.n, 0), fmt(occ(r), 1), fmt(r.hours / r.n, 2), fmt(r.kwh / r.n, 1), fmt(r.kwh / r.hours, 1), fmt(r.kwh, 0), ...(r.eur || [null, null, null]).map((v) => fmt(v, 0))]),
       };
     },
-    foot: () => "IDs nur innerhalb dieses Datensatzes gültig (zufällig vergeben). belegt = Anteil der Stunden des Jahres mit angestecktem Fahrzeug. Umsatz: grobe Bruttoschätzung, keine gemeldeten Werte.",
+    foot: () => "IDs nur innerhalb dieses Datensatzes gültig (zufällig vergeben). belegt = Anteil der Stunden des Jahres mit angestecktem Fahrzeug. Ø Dauer und Ø Energie je Ladevorgang; Ø Leistung = Summe Energie / Summe Dauer, inklusive Standzeit. Umsatz: grobe Bruttoschätzung, keine gemeldeten Werte.",
   });
 
   // 11 Ad-hoc-Preise
