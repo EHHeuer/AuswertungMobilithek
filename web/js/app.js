@@ -1,6 +1,6 @@
 import {
   h, cssVar, lineChart, stackedArea, stackedColumns, hBars, heatmap, ridgeline, lorenz,
-  spreadStrips, tileMap, sparkline, tipRows, seqColor, STATE_TILES, stackedHBars,
+  spreadStrips, tileMap, sparkline, tipRows, seqColor, STATE_TILES, stackedHBars, hourLines,
 } from "./charts.js";
 import { fmt, fmtCompact, fmtEnergy, fmtHours, fmtPeriod, parseDate } from "./format.js";
 
@@ -772,6 +772,139 @@ function defineCards() {
         : `Zählt Stationen, nicht Ladepunkte: df_ls.csv enthält keine Ladepunktzahl. AC/DC aus dem Preismodell der Station (Normal- oder Schnellladepunkt, Grenze 22 kW). Gesamt: ${fmt(t.ac, 0)} AC, ${fmt(t.dc, 0)} DC, ${fmt(t.both, 0)} gemischt.`;
       return `${base} Betreibernamen wie gemeldet, nur Rechtsformen vereinheitlicht; Konzerntöchter bleiben getrennt.`;
     },
+  });
+
+  // Belegung über den Tag
+  const OCC_T = { all: "Gesamt", ac: "AC", dc: "DC" };
+  const occYears = () => Object.keys(D.occupancy?.profile || {}).sort().reverse().map((y) => [+y, y]);
+  const occTools = () => [
+    { type: "seg", key: "occTyp", default: "all", options: Object.entries(OCC_T), global: true, label: "Ladeart" },
+    { type: "select", key: "occYear", default: RANGE.lastFull, numeric: true, options: occYears(), global: true, label: "Jahr" },
+  ];
+  const occMatrix = (typ, year) => D.occupancy.profile[String(year)]?.[typ] || null;
+  const dayCurve = (mat, days) => Array.from({ length: 24 }, (_, hh) => {
+    const v = days.map((d) => mat[d][hh]).filter((x) => x != null);
+    return v.length ? (v.reduce((a, b) => a + b, 0) / v.length) * 100 : null;
+  });
+  const pctFmt = (v, l) => `${fmt(v, l ? 1 : 0)} %`;
+  const typColor = (t) => (t === "ac" ? classColor(2) : t === "dc" ? classColor(4) : cssVar("--ink"));
+
+  card("occPeak", {
+    available: () => !!D.occupancy,
+    title: () => `Maximal ausgelastete Stunde · ${tool("occYear", RANGE.lastFull)}`,
+    sub: () => "Typischer Tagesgipfel und einzelne Spitzenstunde des Jahres",
+    tools: () => [occTools()[1]],
+    render: (body) => {
+      const year = tool("occYear", RANGE.lastFull);
+      const row = h("div", { class: "stat-row" });
+      const table = [];
+      for (const t of ["all", "ac", "dc"]) {
+        const mat = occMatrix(t, year);
+        const pk = D.occupancy.peaks[String(year)]?.[t];
+        if (!mat || !pk) continue;
+        const curve = dayCurve(mat, [0, 1, 2, 3, 4, 5, 6]);
+        const hMax = curve.indexOf(Math.max(...curve.filter((v) => v != null)));
+        const d = new Date(pk.ts.replace(" ", "T"));
+        const when = `${DOW[(d.getDay() + 6) % 7]}, ${d.toLocaleDateString("de-DE")}, ${d.getHours()}:00 Uhr`;
+        row.append(h("div", { class: "stat", style: { "--c": typColor(t) } }, [
+          h("p", { class: "stat__label", text: `${OCC_T[t]} · typischer Gipfel` }),
+          h("p", { class: "stat__value" }, [`${hMax}:00`, h("span", { class: "stat__unit", text: `Uhr · ${fmt(curve[hMax], 1)} % belegt` })]),
+          h("p", { class: "stat__sub", text: `Spitzenstunde: ${when}, ${fmt(pk.share * 100, 1)} % (${fmt(pk.busy, 0)} von ${fmt(pk.lps, 0)} Punkten)` }),
+        ]));
+        table.push([OCC_T[t], `${hMax}:00 Uhr`, `${fmt(curve[hMax], 1)} %`, when, `${fmt(pk.share * 100, 1)} %`, fmt(pk.busy, 0), fmt(pk.lps, 0)]);
+      }
+      body.append(row);
+      return { head: ["Ladeart", "Typischer Gipfel", "Belegung Ø", "Spitzenstunde", "Belegung", "belegte Punkte (Ø in der Stunde)", "meldende Punkte"], rows: table };
+    },
+    foot: () => "Typischer Gipfel = Stunde mit der höchsten mittleren Belegung über alle Tage des Jahres. Spitzenstunde = einzelne Kalenderstunde mit der höchsten Belegung.",
+  });
+
+  card("occDay", {
+    available: () => !!D.occupancy,
+    title: () => `Belegte Ladepunkte im Tagesverlauf · ${OCC_T[tool("occTyp", "all")]}`,
+    sub: () => `Anteil aller meldenden Ladepunkte · ${tool("occYear", RANGE.lastFull)}`,
+    tools: occTools,
+    render: (body) => {
+      const t = tool("occTyp", "all"), year = tool("occYear", RANGE.lastFull);
+      const mat = occMatrix(t, year);
+      if (!mat) { body.append(h("div", { class: "empty", text: "Keine Daten." })); return null; }
+      const series = [
+        { label: "Montag bis Freitag", color: typColor(t), values: dayCurve(mat, [0, 1, 2, 3, 4]), width: 2.5 },
+        { label: "Samstag", color: cssVar("--c3"), values: dayCurve(mat, [5]) },
+        { label: "Sonntag", color: cssVar("--muted"), values: dayCurve(mat, [6]) },
+      ];
+      const wk = series[0].values;
+      const hMax = wk.indexOf(Math.max(...wk.filter((v) => v != null)));
+      hourLines(body, series, { yFormat: pctFmt, height: 300, mark: { i: hMax, v: wk[hMax], label: `${fmt(wk[hMax], 1)} % um ${hMax} Uhr` } });
+      return { head: ["Stunde", ...series.map((x) => x.label)], rows: Array.from({ length: 24 }, (_, hh) => [`${hh}:00`, ...series.map((x) => (x.values[hh] == null ? "–" : `${fmt(x.values[hh], 1)} %`))]) };
+    },
+  });
+
+  card("occHeat", {
+    available: () => !!D.occupancy,
+    title: () => `Belegung nach Wochentag und Stunde · ${OCC_T[tool("occTyp", "all")]}`,
+    sub: () => `Mittlerer Anteil belegter Ladepunkte · ${tool("occYear", RANGE.lastFull)}`,
+    tools: occTools,
+    render: (body) => {
+      const t = tool("occTyp", "all"), year = tool("occYear", RANGE.lastFull);
+      const mat = occMatrix(t, year);
+      if (!mat) { body.append(h("div", { class: "empty", text: "Keine Daten." })); return null; }
+      const matrix = mat.map((row, di) => row.map((v, hh) => ({
+        v: v == null ? null : v * 100,
+        tip: tipRows(`${DOW[di]}, ${hh}:00 bis ${hh + 1}:00 Uhr`, [{ label: "belegt", value: v == null ? "–" : `${fmt(v * 100, 1)} %` }]),
+      })));
+      heatmap(body, matrix, DOW, Array.from({ length: 24 }, (_, i) => String(i)), { format: (v) => `${fmt(v, 1)} %`, gamma: 1 });
+      return { head: ["Tag", ...Array.from({ length: 24 }, (_, i) => `${i} h`)], rows: matrix.map((r, i) => [DOW[i], ...r.map((c) => (c.v == null ? "–" : fmt(c.v, 1)))]) };
+    },
+    foot: () => nationalOnly(),
+  });
+
+  // Top-Stationen
+  card("topStations", {
+    available: () => !!D.top_stations,
+    title: () => `Top 10 ${tool("topTyp", "dc") === "ac" ? "AC" : "DC"}-Stationen nach Energie · ${tool("topYear", RANGE.lastFull)}`,
+    sub: () => {
+      const p = D.top_stations.price_ct[tool("topTyp", "dc")];
+      return p ? `Umsatz geschätzt mit ${fmt(p[1], 0)} ct/kWh (Spanne ${fmt(p[0], 0)} bis ${fmt(p[2], 0)} ct)` : "Ohne Preisdaten keine Umsatzschätzung";
+    },
+    tools: () => [
+      { type: "seg", key: "topTyp", default: "dc", options: [["ac", "AC"], ["dc", "DC"]] },
+      { type: "select", key: "topYear", default: RANGE.lastFull, numeric: true, options: Object.keys(D.top_stations.years).sort().reverse().map((y) => [+y, y]), label: "Jahr" },
+    ],
+    render: (body) => {
+      const t = tool("topTyp", "dc"), year = String(tool("topYear", RANGE.lastFull));
+      const rows = D.top_stations.years[year]?.[t] || [];
+      if (!rows.length) { body.append(h("div", { class: "empty", text: "Keine Daten." })); return null; }
+      const days = periodDays(+new Date(+year, 0, 1), "year");
+      const maxE = Math.max(...rows.map((r) => r.kwh));
+      const maxU = Math.max(...rows.map((r) => (r.eur ? r.eur[1] : 0)));
+      const bar = (v, max, extra) => h("div", { class: "cellbar" }, [
+        h("span", { class: "cellbar__val", text: extra }),
+        h("span", { class: "cellbar__bar", style: { width: `${max ? (v / max) * 100 : 0}%`, background: typColor(t) } }),
+      ]);
+      const eur = (v) => `${fmtCompact(v)} €`;
+      const LAGE_KURZ = { "Tankstelle an einer Bundesautobahn": "Autobahn-Tankstelle", "Öffentlicher Parkplatz": "Öff. Parkplatz" };
+      const table = h("table", { class: "data-table lage-table top-table" }, [
+        h("thead", {}, h("tr", {}, ["#", "Station", "Bundesland", "Lage", "Punkte", "kW", "Vorg./Tag", "Energie", "Umsatz ca."].map((c) => h("th", { text: c })))),
+        h("tbody", {}, rows.map((r) => h("tr", {}, [
+          h("td", { text: String(r.rank) }),
+          h("td", { text: r.id.replace("_shuffled", "") }),
+          h("td", { text: r.bl || "–" }),
+          h("td", { text: LAGE_KURZ[r.lage] || r.lage, title: r.lage }),
+          h("td", { text: fmt(r.lps, 0) }),
+          h("td", { text: fmt(r.kw_max, 0) }),
+          h("td", { text: fmt(r.n / days, 1) }),
+          h("td", {}, bar(r.kwh, maxE, `${fmt(r.kwh / 1000, 0)} MWh`)),
+          h("td", {}, r.eur ? [bar(r.eur[1], maxU, eur(r.eur[1])), h("span", { class: "cell-sub", text: `${fmt(r.eur[0] / 1000, 0)} bis ${fmt(r.eur[2] / 1000, 0)} Tsd.` })] : "–"),
+        ]))),
+      ]);
+      body.append(h("div", { class: "lage-wrap" }, table));
+      return {
+        head: ["Rang", "Station", "Bundesland", "Lage", "Ladepunkte", "max. kW", "Vorgänge", "Energie kWh", "Umsatz P25 €", "Umsatz Median €", "Umsatz P75 €"],
+        rows: rows.map((r) => [r.rank, r.id, r.bl, r.lage, r.lps, fmt(r.kw_max, 0), fmt(r.n, 0), fmt(r.kwh, 0), ...(r.eur || [null, null, null]).map((v) => fmt(v, 0))]),
+      };
+    },
+    foot: () => "Stations-ID nur innerhalb dieses Datensatzes gültig (zufällig vergeben). Umsatz: grobe Bruttoschätzung, keine gemeldeten Werte.",
   });
 
   // 11 Ad-hoc-Preise

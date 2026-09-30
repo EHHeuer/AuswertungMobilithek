@@ -815,3 +815,76 @@ export function stackedHBars(container, items, keys, opts = {}) {
   el("line", { class: "baseline", x1: labelW, x2: labelW, y1: 2, y2: H - 4 }, svg);
   container.append(svg, legend(keys, true));
 }
+
+// ------------------------------------------------------------------ Tagesprofil (24 Stunden)
+
+/** series: [{label, color, values: [24 Werte], width?}] */
+export function hourLines(container, series, opts = {}) {
+  container.innerHTML = "";
+  const W = container.clientWidth || 600;
+  const H = opts.height || 280;
+  const yFormat = opts.yFormat || ((v) => fmt(v));
+  const all = series.flatMap((s) => s.values).filter((v) => v != null);
+  if (!all.length) {
+    container.append(h("div", { class: "empty", text: "Keine Werte für diese Auswahl." }));
+    return;
+  }
+  const yt = niceTicks(0, Math.max(...all) * 1.08, 5);
+  const yMax = yt[yt.length - 1];
+  const m = { t: 12, r: 16, b: 26, l: Math.max(...yt.map((t) => textWidth(yFormat(t)))) + 14 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const x = linear(0, 23, m.l, m.l + iw), y = linear(0, yMax, m.t + ih, m.t);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img" });
+  const g = el("g", { class: "grid" }, svg), ax = el("g", { class: "axis" }, svg);
+  for (const t of yt) {
+    if (t) el("line", { x1: m.l, x2: m.l + iw, y1: y(t), y2: y(t) }, g);
+    el("text", { x: m.l - 8, y: y(t) + 4, "text-anchor": "end", text: yFormat(t) }, ax);
+  }
+  for (let hh = 0; hh < 24; hh += W < 480 ? 4 : 2) el("text", { x: x(hh), y: H - 6, "text-anchor": "middle", text: `${hh} Uhr` }, ax);
+  el("line", { class: "baseline", x1: m.l, x2: m.l + iw, y1: y(0), y2: y(0) }, svg);
+  for (const s of series) {
+    const d = s.values.map((v, i) => (v == null ? "" : `${i && s.values[i - 1] != null ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`)).join("");
+    el("path", { d, class: "series-line", stroke: s.color, "stroke-width": s.width || 2 }, svg);
+  }
+  if (opts.mark) {
+    const { i, v, label } = opts.mark;
+    el("circle", { cx: x(i), cy: y(v), r: 5, fill: opts.markColor || cssVar("--ink"), class: "hover-dot" }, svg);
+    el("text", { class: "end-label end-label--value", x: x(i), y: y(v) - 10, "text-anchor": i > 18 ? "end" : "middle", text: label }, svg);
+  }
+  const hover = el("g", { style: "display:none" }, svg);
+  const cross = el("line", { class: "crosshair", y1: m.t, y2: m.t + ih }, hover);
+  const dots = series.map((s) => el("circle", { r: 4.5, fill: s.color, class: "hover-dot" }, hover));
+  const overlay = el("rect", { x: m.l, y: m.t, width: iw, height: ih, fill: "transparent", tabindex: 0, style: "outline:none" }, svg);
+  let idx = -1;
+  const show = (i, evt) => {
+    idx = Math.max(0, Math.min(23, i));
+    hover.style.display = "";
+    cross.setAttribute("x1", x(idx));
+    cross.setAttribute("x2", x(idx));
+    const rows = [];
+    series.forEach((s, k) => {
+      const v = s.values[idx];
+      if (v == null) { dots[k].style.display = "none"; return; }
+      dots[k].style.display = "";
+      dots[k].setAttribute("cx", x(idx));
+      dots[k].setAttribute("cy", y(v));
+      rows.push({ label: s.label, color: s.color, value: yFormat(v, true) });
+    });
+    const r = svg.getBoundingClientRect();
+    showTip(evt || { clientX: r.left + x(idx), clientY: r.top + m.t }, tipRows(`${idx}:00 bis ${idx + 1}:00 Uhr`, rows, opts.tooltipFoot || ""));
+  };
+  overlay.addEventListener("mousemove", (evt) => {
+    const r = svg.getBoundingClientRect();
+    show(Math.round(x.invert(((evt.clientX - r.left) / r.width) * W)), evt);
+  });
+  const leave = () => { hover.style.display = "none"; hideTip(); };
+  overlay.addEventListener("mouseleave", leave);
+  overlay.addEventListener("blur", leave);
+  overlay.addEventListener("focus", () => show(idx < 0 ? 18 : idx));
+  overlay.addEventListener("keydown", (evt) => {
+    if (evt.key === "ArrowRight") { show(idx + 1); evt.preventDefault(); }
+    if (evt.key === "ArrowLeft") { show(idx - 1); evt.preventDefault(); }
+  });
+  container.append(svg);
+  if (series.length > 1) container.append(legend(series));
+}

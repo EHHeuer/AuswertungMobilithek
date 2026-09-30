@@ -30,7 +30,9 @@
         <a href="#leistung">Leistung</a>
         <a href="#ladepunkte">Ladepunkte</a>
         <a href="#rhythmus">Rhythmus</a>
+        <a href="#belegung">Belegung</a>
         <a href="#regionen">Regionen</a>
+        <a href="#top">Top 10</a>
         <a href="#stammdaten">Stammdaten</a>
         <a href="#preise">Preise</a>
         <a href="#methodik">Methodik</a>
@@ -193,11 +195,28 @@
       </div>
     </section>
 
+    <!-- Belegung -->
+    <section class="section" id="belegung">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">08</span>
+          <h2>Belegung über den Tag</h2>
+          <p>Welcher Anteil aller meldenden Ladepunkte ist zu jeder Stunde belegt? Ein Ladepunkt gilt vom Beginn bis zum Ende eines Vorgangs als belegt, Standzeit nach vollem Akku zählt mit.</p>
+          <p class="note">Nenner sind die Ladepunkte, die im jeweiligen Monat mindestens einen Vorgang gemeldet haben. AC = Nennleistung bis 22 kW, DC = darüber. Zeitzone der Rohdaten nicht dokumentiert, angenommen wird Ortszeit.</p>
+        </header>
+        <div class="stack">
+          <div class="card" data-chart="occPeak"></div>
+          <div class="card" data-chart="occDay"></div>
+          <div class="card" data-chart="occHeat"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- 08 Verteilungen -->
     <section class="section" id="verteilung">
       <div class="wrap section__grid">
         <header class="section__head">
-          <span class="section__no">08</span>
+          <span class="section__no">09</span>
           <h2>Verteilungen im Wandel</h2>
           <p>Ein Mittelwert verrät nicht, ob sich die ganze Verteilung verschiebt oder nur die Ränder. Ein Kamm je Jahr, jeweils auf die eigene Spitze normiert.</p>
         </header>
@@ -209,7 +228,7 @@
     <section class="section" id="regionen">
       <div class="wrap section__grid">
         <header class="section__head">
-          <span class="section__no">09</span>
+          <span class="section__no">10</span>
           <h2>Regionen und Standorte</h2>
           <p>Die Ladevorgänge tragen das Bundesland und die Lage der tatsächlichen Station. Genauere Orte sind aus Geheimhaltungsgründen nicht enthalten.</p>
         </header>
@@ -223,11 +242,24 @@
       </div>
     </section>
 
+    <!-- Top-Stationen -->
+    <section class="section" id="top">
+      <div class="wrap section__grid">
+        <header class="section__head">
+          <span class="section__no">11</span>
+          <h2>Die stärksten Stationen</h2>
+          <p>Die zehn Stationen mit der meisten geladenen Energie im Jahr, getrennt nach AC und DC. Eine Station zählt als DC, sobald einer ihrer Ladepunkte mehr als 22 kW hat.</p>
+          <p class="note">Die Stations-IDs sind in den Rohdaten zufällig neu vergeben. Name, Ort und Betreiber lassen sich deshalb nicht zuordnen. Umsätze sind nicht gemeldet und hier grob geschätzt: Energie × typischer Ad-hoc-Arbeitspreis (brutto) aus den Preismodellen. Vertragstarife, Roaming, Zeit- und Grundgebühren bleiben unberücksichtigt.</p>
+        </header>
+        <div class="card" data-chart="topStations"></div>
+      </div>
+    </section>
+
     <!-- 10 Stammdaten -->
     <section class="section" id="stammdaten">
       <div class="wrap section__grid">
         <header class="section__head">
-          <span class="section__no">10</span>
+          <span class="section__no">12</span>
           <h2>Stammdaten der Ladestationen</h2>
           <p>Die Stammdaten beschreiben die geförderte Infrastruktur. Sie lassen sich nicht mit den Ladevorgängen verknüpfen, weil deren IDs zufällig neu vergeben wurden. Beide Sichten stehen daher nebeneinander, nicht übereinander.</p>
           <p class="note" id="note-master"></p>
@@ -250,7 +282,7 @@
     <section class="section" id="preise">
       <div class="wrap section__grid">
         <header class="section__head">
-          <span class="section__no">11</span>
+          <span class="section__no">13</span>
           <h2>Ad-hoc-Preise</h2>
           <p>Gemeldete Preismodelle für spontanes Laden ohne Vertrag, getrennt nach Normal- und Schnellladepunkten. Arbeitspreise in Euro wurden in Cent umgerechnet, offensichtliche Einheitenfehler (z. B. »0,39 Cent«) korrigiert.</p>
           <p class="note">Momentaufnahme des zuletzt gemeldeten Preismodells je Station, keine Preishistorie. Die Kohorten zeigen den heutigen Preis von Stationen, die im jeweiligen Jahr kostenpflichtig wurden.</p>
@@ -269,7 +301,7 @@
     <section class="section section--method" id="methodik">
       <div class="wrap section__grid">
         <header class="section__head">
-          <span class="section__no">12</span>
+          <span class="section__no">14</span>
           <h2>Datenqualität und Methodik</h2>
           <p>Die Metadaten der NOW beschreiben Ausreißer bis hin zu negativen Energiemengen und Zeitstempeln aus dem Jahr 1809. Jede Zeile durchläuft deshalb die Regeln rechts in dieser Reihenfolge, die erste zutreffende zählt. Das Diagramm zeigt, wie oft das im aktuellen Datenstand tatsächlich passiert.</p>
         </header>
